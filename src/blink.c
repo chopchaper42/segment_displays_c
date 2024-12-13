@@ -35,16 +35,14 @@ void setup() {
     
     // clear configuration registers
     GPIOC_CRL &= ~0xff;
-    GPIOC_CRL &= ~0xff;
-
-    GPIOB_CRH &= ~0xff;
+    GPIOC_CRH &= ~0xff;
     GPIOB_CRL &= ~0xff;
+    GPIOA_CRL &= ~0xff;
 
-    GPIOA_CRH &= ~0xff;
-
-    // configure pins
-    // configure DATA: 29th bit to 1 := output push-pull 10MHz
-    GPIOB_CRH |= 0x11; // DATA & CLK move `0001 0001` 24 bits to the left
+    GPIOC_CRH |= 0x1;  // PC8 output
+    GPIOC_CRL |= 0x88; // PC0 (DATA) and PC1 (CLK)
+    GPIOB_CRL |= 0x888; // PB0 (+ button), PB1 (- button) and PB2 (conf button)
+    GPIOA_CRL |= 0x118; // PA0 (Start button), PA1 (left display activation), PA2 (right display activation)
 
 }
 
