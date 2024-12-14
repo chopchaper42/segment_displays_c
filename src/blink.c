@@ -13,6 +13,19 @@ uint8_t digits[] = {0b11111100, 0b11000000,
                     0b01111101, 0b11000100,
                     0b11111101, 0b11011101};
 
+void send_serial(uint16_t bits) {
+    bits = ~bits;
+    for (int8_t i = 15; i >= 0; i--) {
+        uint16_t bit = (bits & (1 << i)) >> i; 
+
+        data_set(bit); // set DATA to bit level
+        clk_set(HIGH); // on the rising CLK edge shift register loads the value from DATA
+        data_set(LOW); // return data to the dafault state
+        clk_set(LOW);  // return CLK to the default state
+
+    }
+}
+
 void setup() {
     // enable clock for ports A, B and C
     RCC_APB2ENR |= RCC_IOPCEN | RCC_IOPAEN | RCC_IOPBEN; 
@@ -30,9 +43,7 @@ void setup() {
 
     GPIOA_CRL |= 0x118; // PA0 (Start button), PA1 (left display activation), PA2 (right display activation)
 
-}
-
-void loop() {
+    send_serial((uint16_t)DISPLAY_OFF);
 
 }
 
@@ -60,52 +71,50 @@ void clk_set(uint16_t level)
     }
 }
 
-// need to send in the big endian style: the MSB first, the LSB last
-// THERE IS A PROBLEM!!!
-void send_serial(uint16_t bits) {
-    bits = ~bits;
-    for (int8_t i = 15; i >= 0; i--) {
-        uint16_t bit = (bits & (1 << i)) >> i; 
-
-        data_set(bit); // set DATA to bit level
-        clk_set(1); // on the rising CLK edge shift register loads the value from DATA
-        data_set(0); // return data to the dafault state
-        clk_set(0);  // return CLK to the default state
-
-    }
-}
-
-void send_serial_delay(uint16_t bits, int del) {
-    bits = ~bits;
-    for (int8_t i = 15; i >= 0; i--) {
-        /* get the bit to send here */
-        uint16_t bit =  (bits & (1 << i)) >> i; 
-
-        data_set(bit); // set DATA to bit level
-        //delay(del);
-        clk_set(1); // on the rising CLK edge shift register loads the value from DATA
-        //delay(del);
-        data_set(0); // return data to the dafault state
-        //delay(del);
-        clk_set(0);  // return CLK to the default state
-        //delay(del);
-
-    }
-}
-
 void main() {
     setup();
     
-    GPIOA_ODR |= 0x6; // transistors ON
 
-    send_serial((uint16_t)DISPLAY_OFF);
-
-    delay(2000);
+    /* delay(2000);
     for (int i = 1; i < 10; i++) {
 
         uint16_t value = (digits[i - 1] << 8) | digits[i];
 
         send_serial_delay(value, 1);
         delay(1000);
-    }
+    } */
+
+    delay(1000);
+
+    //GPIOA_ODR |= 0x6;
+    /* uint16_t value = (digits[6] << 8) | digits[1]; // construct the value: zero << 8 + one
+    send_serial(value); // send the data */
+
+    // int set_time = 5;
+
+    //uint16_t value = 0;
+    /* while (1)
+    {
+        // buttons
+
+
+        // activate displays and send data
+
+        // activate left displays [PA1]
+        GPIOA_ODR |= 0x2;
+        value = (digits[1] << 8) | digits[1]; // construct the value: zero << 8 + one
+        send_serial(value); // send the data
+        //GPIOA_ODR &= ~0x2; // turn the left displays off
+
+        // wait some 1-2 ms
+        delay(1000);
+
+        // activate right displays [PA2]
+        //GPIOA_ODR |= 0x4;
+        //value = (digits[0] << 8) | digits[6]; // construct the value: zero << 8 + six
+        //send_serial(value); // send the data
+        //GPIOA_ODR &= ~0x4; // turn the left displays off
+
+        //delay(1000);
+    } */
 }
