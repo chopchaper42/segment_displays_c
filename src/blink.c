@@ -5,6 +5,8 @@
 #define HIGH 1
 #define LOW 0
 
+#define ONE_SECOND 250
+
 #define DISPLAY_OFF 0xFFFF
 
 uint8_t digits[] = {0b11111100, 0b11000000,
@@ -12,6 +14,30 @@ uint8_t digits[] = {0b11111100, 0b11000000,
                     0b11001001, 0b01011101,
                     0b01111101, 0b11000100,
                     0b11111101, 0b11011101};
+
+void data_set(uint16_t level)
+{
+    if (!level)
+    {
+        GPIOC_ODR &= ~0x1; // PC0 LOW
+    }
+    else
+    {
+        GPIOC_ODR |= 0x1;  // PC0 HIGH
+    }
+}
+
+void clk_set(uint16_t level)
+{
+    if (!level)
+    {
+        GPIOC_ODR &= ~0x2; // PC1 LOW
+    }
+    else
+    {
+        GPIOC_ODR |= 0x2;  // PC1 HIGH
+    }
+}
 
 void send_serial(uint16_t bits) {
     bits = ~bits;
@@ -47,74 +73,68 @@ void setup() {
 
 }
 
-void data_set(uint16_t level)
-{
-    if (!level)
-    {
-        GPIOC_ODR &= ~0x1; // PC0 LOW
-    }
-    else
-    {
-        GPIOC_ODR |= 0x1;  // PC0 HIGH
-    }
-}
-
-void clk_set(uint16_t level)
-{
-    if (!level)
-    {
-        GPIOC_ODR &= ~0x2; // PC1 LOW
-    }
-    else
-    {
-        GPIOC_ODR |= 0x2;  // PC1 HIGH
-    }
-}
-
 void main() {
     setup();
     
+    int set_time = 10;
 
-    /* delay(2000);
-    for (int i = 1; i < 10; i++) {
+    int raw = 0;
+    int debounced = 0;
+    int counter = 10;
 
-        uint16_t value = (digits[i - 1] << 8) | digits[i];
+    uint16_t value = 0;
 
-        send_serial_delay(value, 1);
-        delay(1000);
-    } */
+    int timer = ONE_SECOND;
 
-    delay(1000);
-
-    //GPIOA_ODR |= 0x6;
-    /* uint16_t value = (digits[6] << 8) | digits[1]; // construct the value: zero << 8 + one
-    send_serial(value); // send the data */
-
-    // int set_time = 5;
-
-    //uint16_t value = 0;
-    /* while (1)
+    while (1)
     {
         // buttons
+        /* raw = GPIOB_IDR & ~0x1;
 
+        if (raw != debounced)
+        {
+            counter = 10;
+        }
+
+        if (raw == 1)
+        {
+            counter--;
+        }
+
+        if (counter == 0)
+        {
+            debounced = raw;
+        } */
+
+        if (counter > 0) {
+            if (timer > 0) timer--;
+
+            if (timer == 0)
+            {
+                counter--;
+                timer = ONE_SECOND;
+            }
+        }
 
         // activate displays and send data
 
+        GPIOA_ODR &= ~0x4; // turn the left displays off
         // activate left displays [PA1]
         GPIOA_ODR |= 0x2;
-        value = (digits[1] << 8) | digits[1]; // construct the value: zero << 8 + one
+        value = (digits[counter / 10] << 8) | digits[counter / 10]; // construct the value: zero << 8 + one
         send_serial(value); // send the data
-        //GPIOA_ODR &= ~0x2; // turn the left displays off
 
         // wait some 1-2 ms
-        delay(1000);
+        delay(2);
 
+        GPIOA_ODR &= ~0x2; // turn the left displays off
         // activate right displays [PA2]
-        //GPIOA_ODR |= 0x4;
-        //value = (digits[0] << 8) | digits[6]; // construct the value: zero << 8 + six
-        //send_serial(value); // send the data
-        //GPIOA_ODR &= ~0x4; // turn the left displays off
+        GPIOA_ODR |= 0x4;
+        value = (digits[counter % 10] << 8) | digits[counter % 10]; // construct the value: zero << 8 + six
+        send_serial(value); // send the data
 
-        //delay(1000);
-    } */
+        delay(2);
+
+        if (counter == 0) counter = 10;
+    }
 }
