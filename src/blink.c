@@ -10,6 +10,12 @@
 
 #define DISPLAY_OFF 0xFFFF
 
+typedef enum EVENT {
+    ADD,
+    SUB,
+    NO_EVENT
+} EVENT;
+
 uint8_t digits[] = {0b11111100, 0b11000000,
                     0b10110101, 0b11010101,
                     0b11001001, 0b01011101,
@@ -106,6 +112,7 @@ void main() {
     int time_unset = 10;
 
     int raw_reading = 0;
+    int debounced = -1;
     int raw_counter = RAW_READING_COUNTER;
     int handled = 0;
 
@@ -116,7 +123,8 @@ void main() {
 
     int timer = 0;
     int press_timer = 0;
-    int time_to_add = 0;
+
+    EVENT event = NO_EVENT;
 
     while (1)
     {
@@ -127,9 +135,10 @@ void main() {
 
         if (raw_reading == HIGH)
         {
-            if (raw_counter == 0 && !handled)
+            if (debounced == 1 && !handled)
             {
-                handled = 1;
+                GPIOC_ODR |= 0x100;
+                press_timer++;
 
                 if (running)
                 {
@@ -138,6 +147,7 @@ void main() {
                     {
                         time_left = time_set;
                         timer = 0;
+                        handled = 1;
                     }
                 }
                 else
@@ -146,37 +156,75 @@ void main() {
                     if ((GPIOA_IDR & 0x1) == HIGH)
                     {
                         running = 1;
+                        handled = 1;
+
                     }
                     // if PB0 is HIGH
                     if ((GPIOB_IDR & 0x1) == HIGH)
                     {
-                        if (time_set < 99)
-                            time_unset++;
+                        //if (time_set < 99)
+                          //  time_unset++;
+                        event = ADD;
                     }
                     // PB1 is HIGH
                     if (((GPIOB_IDR & 0x2) >> 1) == HIGH)
                     {
-                        if (time_set > 0)
-                            time_unset--;
+                        event = SUB;
+                        //if (time_set > 0)
+                          //  time_unset--;
                     }
                     // if PB2 is HIGH
                     if (((GPIOB_IDR & 0x4) >> 2) == HIGH)
                     {
                         time_set = time_unset;
                         time_left = time_set;
+                        handled = 1;
                     }                    
                 }
                 
             }
+            else
+            {
+                GPIOC_ODR &= ~0x100;
+                press_timer = 0;
+            }
 
             if (raw_counter > 0)
+            {
                 raw_counter--;
+            }
+            else
+            {
+                raw_counter = RAW_READING_COUNTER;
+                debounced = raw_reading;
+            }
+            
         }
         else
         {
+            if (event != NO_EVENT)
+            {
+                int value = press_timer > 250 ? 5 : 1;
+
+                if (event == ADD)
+                {
+                    if (time_set + value <= 99)
+                        time_unset += value;
+                }
+                else
+                {
+                    if (time_set - value >= 0)
+                        time_unset -= value;
+                }
+
+                event = NO_EVENT;
+            }
+
             handled = 0;
             press_timer = 0;
             raw_counter = RAW_READING_COUNTER;
+
+
         }
 
         // activate displays and send data
@@ -213,17 +261,17 @@ void main() {
             }
             else
             {
-                timer = ONE_SECOND;
-                
                 if (time_left == 0)
                 {
                     running = 0;
                     time_left = time_set;
+                    time_unset = time_set;
                     indicate = 0;
                     indicator_timer = 50;
                 }
                 else
                 {
+                    timer = ONE_SECOND;
                     time_left--;
                 }
             }
