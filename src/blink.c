@@ -5,7 +5,8 @@
 #define HIGH 1
 #define LOW 0
 
-#define ONE_SECOND 250
+#define ONE_SECOND 250 // depands on the values used in the delay. Currently 4ms are used in total => 1 sec / 4 ms = 250
+#define RAW_READING_COUNTER 10
 
 #define DISPLAY_OFF 0xFFFF
 
@@ -52,19 +53,41 @@ void send_serial(uint16_t bits) {
     }
 }
 
+void show_time(int time_set, int time_left)
+{
+    uint16_t value = 0;
+    GPIOA_ODR &= ~0x4; // turn the left displays off
+    // activate left displays [PA1]
+    GPIOA_ODR |= 0x2;
+    value = (digits[time_set / 10] << 8) | digits[time_left / 10]; // construct the value: zero << 8 + one
+    send_serial(value); // send the data
+
+    // wait some 1-2 ms
+    delay(2);
+
+    GPIOA_ODR &= ~0x2; // turn the left displays off
+    // activate right displays [PA2]
+    GPIOA_ODR |= 0x4;
+    value = (digits[time_set % 10] << 8) | digits[time_left % 10]; // construct the value: zero << 8 + six
+    send_serial(value); // send the data
+
+    delay(2);
+}
+
 void setup() {
     // enable clock for ports A, B and C
     RCC_APB2ENR |= RCC_IOPCEN | RCC_IOPAEN | RCC_IOPBEN; 
     
     // clear configuration registers
     GPIOC_CRL &= ~0xff;  // clear PC0, PC1
-    GPIOC_CRH &= ~0xf;   // clear PC8
+    GPIOC_CRH &= ~0xff;   // clear PC8, 9
     GPIOB_CRL &= ~0xfff; // clear PB0, PB1, PB2
-    GPIOA_CRL &= ~0xfff; // clear config for PA0, PA1, PA2
+    GPIOA_CRL &= ~(0xfff); // clear config for PA0, PA1, PA2
 
-    GPIOC_CRH |= 0x1;  // PC8 output
+    GPIOC_CRH |= 0x11;  // PC8 output, 9
     GPIOC_CRL |= 0x11; // PC0 (DATA) and PC1 (CLK)
 
+    //GPIOB_CRL |= 0x888; // PB0 (+ button), PB1 (- button) and PB2 (conf button)
     GPIOB_CRL |= 0x888; // PB0 (+ button), PB1 (- button) and PB2 (conf button)
 
     GPIOA_CRL |= 0x118; // PA0 (Start button), PA1 (left display activation), PA2 (right display activation)
@@ -75,66 +98,141 @@ void setup() {
 
 void main() {
     setup();
-    
-    int set_time = 10;
 
-    int raw = 0;
-    int debounced = 0;
-    int counter = 10;
+    int running = 0;
+    
+    int time_set = 10;
+    int time_left = 10;
+    int time_unset = 10;
+
+    int raw_reading = 0;
+    int raw_counter = RAW_READING_COUNTER;
+    int handled = 0;
+
+    int indicator_timer = 50;
+    int indicate = 0;
 
     uint16_t value = 0;
 
-    int timer = ONE_SECOND;
+    int timer = 0;
+    int press_timer = 0;
+    int time_to_add = 0;
 
     while (1)
     {
         // buttons
-        /* raw = GPIOB_IDR & ~0x1;
+        // only one button can be pressed at the time, so if the button is pressed, we will get the value 1
+        // PB0 - "+", PB1 - "-", PB2 - "CONF", PA0 - "START"
+        raw_reading = GPIOA_IDR & 0x1 | GPIOB_IDR & 0x1 | (GPIOB_IDR & 0x2) >> 1 | (GPIOB_IDR & 0x4) >> 2;
 
-        if (raw != debounced)
+        if (raw_reading == HIGH)
         {
-            counter = 10;
-        }
-
-        if (raw == 1)
-        {
-            counter--;
-        }
-
-        if (counter == 0)
-        {
-            debounced = raw;
-        } */
-
-        if (counter > 0) {
-            if (timer > 0) timer--;
-
-            if (timer == 0)
+            if (raw_counter == 0 && !handled)
             {
-                counter--;
-                timer = ONE_SECOND;
+                handled = 1;
+
+                if (running)
+                {
+                    // if PA0 is HIGH
+                    if ((GPIOA_IDR & 0x1) == HIGH)
+                    {
+                        time_left = time_set;
+                        timer = 0;
+                    }
+                }
+                else
+                {
+                    // if PA0 is HIGH
+                    if ((GPIOA_IDR & 0x1) == HIGH)
+                    {
+                        running = 1;
+                    }
+                    // if PB0 is HIGH
+                    if ((GPIOB_IDR & 0x1) == HIGH)
+                    {
+                        if (time_set < 99)
+                            time_unset++;
+                    }
+                    // PB1 is HIGH
+                    if (((GPIOB_IDR & 0x2) >> 1) == HIGH)
+                    {
+                        if (time_set > 0)
+                            time_unset--;
+                    }
+                    // if PB2 is HIGH
+                    if (((GPIOB_IDR & 0x4) >> 2) == HIGH)
+                    {
+                        time_set = time_unset;
+                        time_left = time_set;
+                    }                    
+                }
+                
             }
+
+            if (raw_counter > 0)
+                raw_counter--;
+        }
+        else
+        {
+            handled = 0;
+            press_timer = 0;
+            raw_counter = RAW_READING_COUNTER;
         }
 
         // activate displays and send data
 
-        GPIOA_ODR &= ~0x4; // turn the left displays off
-        // activate left displays [PA1]
-        GPIOA_ODR |= 0x2;
-        value = (digits[counter / 10] << 8) | digits[counter / 10]; // construct the value: zero << 8 + one
-        send_serial(value); // send the data
+        if (running)
+        {
+            GPIOC_ODR |= 0x100;
 
-        // wait some 1-2 ms
-        delay(2);
+            if (time_left < 4)
+            {
+                if (indicator_timer == 0)
+                {
+                    indicate = !indicate;
+                    indicator_timer = 50;
+                }
+                indicator_timer--;
+            }
 
-        GPIOA_ODR &= ~0x2; // turn the left displays off
-        // activate right displays [PA2]
-        GPIOA_ODR |= 0x4;
-        value = (digits[counter % 10] << 8) | digits[counter % 10]; // construct the value: zero << 8 + six
-        send_serial(value); // send the data
+            if (indicate)
+            {
+                GPIOC_ODR |= 0x200;
+            }
+            else
+            {
+                GPIOC_ODR &= ~0x200;
+            }
 
-        delay(2);
+            show_time(time_set, time_left);
 
-        if (counter == 0) counter = 10;
+            // decrease timer
+            if (timer > 0)
+            {
+                timer--;
+            }
+            else
+            {
+                timer = ONE_SECOND;
+                
+                if (time_left == 0)
+                {
+                    running = 0;
+                    time_left = time_set;
+                    indicate = 0;
+                    indicator_timer = 50;
+                }
+                else
+                {
+                    time_left--;
+                }
+            }
+        }
+        else
+        {
+            GPIOC_ODR &= ~0x100;
+            show_time(time_set, time_unset);
+        }
+
     }
 }
